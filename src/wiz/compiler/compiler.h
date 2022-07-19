@@ -58,6 +58,7 @@ namespace wiz {
             const Statement* getProgram() const;
             std::vector<const Bank*> getRegisteredBanks() const;
             std::vector<const Definition*> getRegisteredDefinitions() const;
+            std::vector<const IrNode*> getCodeIrNodes() const;
             const Builtins& getBuiltins() const;
             std::uint32_t getModeFlags() const;
 
@@ -265,6 +266,9 @@ namespace wiz {
             FwdPtrPool<const Expression> expressionPool;
             FwdPtrPool<IrNode> irNodes;
             std::unordered_map<StringView, std::size_t> labelSuffixes;
+
+            unsigned int debugBlockId = 0;
+            Definition* debugStackFrame = nullptr;
     };
 }
 

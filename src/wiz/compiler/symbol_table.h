@@ -23,6 +23,10 @@ namespace wiz {
 
             SymbolTable* getParent() const;
             std::string getFullName() const;
+            std::uint16_t getDebugNestingLevel() const;
+            void setDebugNestingLevel(const std::uint16_t level);
+            unsigned int getDebugBlockId() const;
+            void setDebugBlockId(const unsigned int id);
             void printKeys(Report* report) const;
 
             void getDefinitions(std::vector<Definition*>& results) const;
@@ -48,6 +52,8 @@ namespace wiz {
             StringView namespaceName;
             std::vector<SymbolTable*> imports;
             std::unordered_map<StringView, FwdUniquePtr<Definition>> namesToDefinitions;
+            std::uint16_t debugNestingLevel = 0;
+            unsigned int debugBlockId = 0;
     };
 }
 

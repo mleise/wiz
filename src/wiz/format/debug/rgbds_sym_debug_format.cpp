@@ -1,5 +1,6 @@
 #include <algorithm>
 
+#include <wiz/compiler/compiler.h>
 #include <wiz/compiler/definition.h>
 #include <wiz/compiler/symbol_table.h>
 #include <wiz/format/output/output_format.h>
@@ -111,7 +112,7 @@ namespace wiz {
         const auto debugName = path::stripExtension(context.outputName).toString() + ".sym";
 
         if (auto writer = context.resourceManager->openWriter(StringView(debugName))) {
-            for (const auto& definition : context.definitions) {
+            for (const auto& definition : context.compiler->getRegisteredDefinitions()) {
                 dumpAddress(writer.get(), definition, context);
             }
         }       

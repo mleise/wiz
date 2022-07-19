@@ -100,6 +100,18 @@ namespace wiz {
         return results;
     }
 
+    std::vector<const IrNode*> Compiler::getCodeIrNodes() const
+    {
+        std::vector<const IrNode*> results;
+        results.reserve(irNodes.size());
+
+        for (const auto& irNode : irNodes)
+            if (irNode.get()->kind == IrNodeKind::Code)
+                results.push_back(irNode.get());
+
+        return results;
+    }
+
     const Builtins& Compiler::getBuiltins() const {
         return builtins;
     }
@@ -114,6 +126,9 @@ namespace wiz {
         if (match == statementScopes.end()) {
             const auto scope = registeredScopes.addNew(parentScope, name);
             statementScopes[statement] = scope;
+            if (currentFunction && parentScope) {
+                scope->setDebugNestingLevel(parentScope->getDebugNestingLevel() + 1);
+            }
             return scope;
         } else {
             return match->second;
@@ -194,7 +209,7 @@ namespace wiz {
     Definition* Compiler::createAnonymousLabelDefinition(StringView prefix) {
         const auto suffix = ++labelSuffixes[prefix];
         const auto labelId = stringPool->intern(prefix.toString() + std::to_string(suffix));
-        const auto result = definitionPool.addNew(Definition::Func(true, false, false, BranchKind::None, builtins.getUnitTuple(), currentScope, nullptr), labelId, nullptr);
+        const auto result = definitionPool.addNew(Definition::Func(true, false, false, BranchKind::None, builtins.getUnitTuple(), currentScope, nullptr, debugStackFrame), labelId, nullptr);
         auto& func = result->func;
         func.resolvedSignatureType = makeFwdUnique<const TypeExpression>(TypeExpression::Function(false, {}, func.returnTypeExpression->clone()), func.returnTypeExpression->location);
         return result;
@@ -3993,7 +4008,7 @@ namespace wiz {
                 }
 
                 auto body = funcDeclaration.body.get();
-                auto definition = currentScope->createDefinition(report, Definition::Func(fallthrough, funcDeclaration.inlined, funcDeclaration.far, returnKind, funcDeclaration.returnTypeExpression.get(), currentScope, body), funcDeclaration.name, statement);
+                auto definition = currentScope->createDefinition(report, Definition::Func(fallthrough, funcDeclaration.inlined, funcDeclaration.far, returnKind, funcDeclaration.returnTypeExpression.get(), currentScope, body, debugStackFrame), funcDeclaration.name, statement);
                 definitionsToResolve.push_back(definition);
 
                 if (definition == nullptr) {
@@ -4001,6 +4016,7 @@ namespace wiz {
                 }
 
                 auto& funcDefinition = definition->func;
+                currentFunction = definition;
 
                 enterScope(getOrCreateStatementScope(stringPool->intern(SymbolTable::generateBlockName()), body, currentScope));
                 funcDefinition.environment = currentScope;
@@ -4024,7 +4040,6 @@ namespace wiz {
                 }
                 exitScope();
 
-                currentFunction = definition;
                 reserveDefinitions(body);
                 break;
             }
@@ -4058,7 +4073,7 @@ namespace wiz {
             case StatementKind::Branch: break;
             case StatementKind::Label: {
                 const auto& labelDeclaration = statement->label;
-                auto definition = currentScope->createDefinition(report, Definition::Func(true, false, labelDeclaration.far, BranchKind::None, builtins.getUnitTuple(), currentScope, nullptr), labelDeclaration.name, statement);
+                auto definition = currentScope->createDefinition(report, Definition::Func(true, false, labelDeclaration.far, BranchKind::None, builtins.getUnitTuple(), currentScope, nullptr, debugStackFrame), labelDeclaration.name, statement);
 
                 if (definition == nullptr) {
                     break;
@@ -4195,7 +4210,7 @@ namespace wiz {
                 }
 
                 Int128 previousValue;
-                const Expression* previousExpression = nullptr;                
+                const Expression* previousExpression = nullptr;
                 FwdUniquePtr<const TypeExpression> enumTypeExpression = makeFwdUnique<const TypeExpression>(TypeExpression::ResolvedIdentifier(definition, {definition->name}), definition->declaration->location);
 
                 enterScope(enumDefinition->environment);
@@ -5172,7 +5187,7 @@ namespace wiz {
         operandRoots.push_back(InstructionOperandRoot(source, std::move(sourceOperand)));
 
         if (const auto instruction = builtins.selectInstruction(InstructionType(BinaryOperatorKind::Assignment), modeFlags, operandRoots)) {
-            irNodes.addNew(IrNode::Code(instruction, std::move(operandRoots)), location);
+            irNodes.addNew(IrNode::Code(instruction, std::move(operandRoots), currentScope), location);
             return true;
         } else {
             return false;
@@ -5201,7 +5216,7 @@ namespace wiz {
         }            
 
         if (const auto instruction = builtins.selectInstruction(InstructionType(op), modeFlags, operandRoots)) {
-            irNodes.addNew(IrNode::Code(instruction, std::move(operandRoots)), location);
+            irNodes.addNew(IrNode::Code(instruction, std::move(operandRoots), currentScope), location);
             return true;
         } else {
             return false;
@@ -5234,7 +5249,7 @@ namespace wiz {
 
         if (const auto instruction = builtins.selectInstruction(InstructionType(op), modeFlags, operandRoots)) {
             irNodes.addNew(
-                IrNode::Code(instruction, std::move(operandRoots)),
+                IrNode::Code(instruction, std::move(operandRoots), currentScope),
                 location);
             return true;
         } else {
@@ -5356,7 +5371,7 @@ namespace wiz {
                     }
 
                     if (const auto instruction = builtins.selectInstruction(InstructionType(kind), modeFlags, operandRoots)) {
-                        irNodes.addNew(IrNode::Code(instruction, std::move(operandRoots)), function->location);
+                        irNodes.addNew(IrNode::Code(instruction, std::move(operandRoots), currentScope), function->location);
                     } else {
                         return false;
                     }
@@ -5426,7 +5441,7 @@ namespace wiz {
                     modeFlags,
                     operandRoots)
                 ) {
-                    irNodes.addNew(IrNode::Code(instruction, std::move(operandRoots)), function->location);
+                    irNodes.addNew(IrNode::Code(instruction, std::move(operandRoots), currentScope), function->location);
                     return true;
                 } else {
                     raiseEmitIntrinsicError(InstructionType(InstructionType::VoidIntrinsic(definition)), operandRoots, location);
@@ -5484,7 +5499,7 @@ namespace wiz {
                     modeFlags,
                     operandRoots)
                 ) {
-                    irNodes.addNew(IrNode::Code(instruction, std::move(operandRoots)), location);
+                    irNodes.addNew(IrNode::Code(instruction, std::move(operandRoots), currentScope), location);
                     return true;
                 } else {
                     raiseEmitIntrinsicError(InstructionType(InstructionType::LoadIntrinsic(definition)), operandRoots, location);
@@ -5517,7 +5532,7 @@ namespace wiz {
             }
 
             if (const auto instruction = builtins.selectInstruction(InstructionType(kind), modeFlags, operandRoots)) {
-                irNodes.addNew(IrNode::Code(instruction, std::move(operandRoots)), function->location);
+                irNodes.addNew(IrNode::Code(instruction, std::move(operandRoots), currentScope), function->location);
 
                 if (resultDestination != nullptr) {
                     const auto returnType = functionType->returnType.get();
@@ -5875,7 +5890,7 @@ namespace wiz {
                 return emitAssignmentExpressionIr(dest, source->cast.operand.get(), location);
             } 
 
-            if (!emitLoadExpressionIr(dest, source, dest->location)) {
+            if (!emitLoadExpressionIr(dest, source, location)) {
                 if (hasNestedAssignment(source)) {
                     auto strippedSource = expressionPool.add(stripNestedAssignment(source));
                     return emitNestedAssignmentIr(source, true, false)
@@ -6258,7 +6273,7 @@ namespace wiz {
                             }
 
                             if (const auto instruction = builtins.selectInstruction(testAndBranch->testInstructionType, modeFlags, operandRoots)) {
-                                irNodes.addNew(IrNode::Code(instruction, std::move(operandRoots)), location);
+                                irNodes.addNew(IrNode::Code(instruction, std::move(operandRoots), currentScope), location);
                                 return true;
                             }
                         }
@@ -6266,7 +6281,7 @@ namespace wiz {
                         return false;
                     } else {
                         if (const auto testInstruction = builtins.selectInstruction(testAndBranch->testInstructionType, modeFlags, operandRoots)) {
-                            irNodes.addNew(IrNode::Code(testInstruction, std::move(operandRoots)), location);
+                            irNodes.addNew(IrNode::Code(testInstruction, std::move(operandRoots), currentScope), location);
                         } else {
                             return false;
                         }
@@ -6356,7 +6371,7 @@ namespace wiz {
                     operandRoots.push_back(InstructionOperandRoot(nullptr, makeFwdUnique<InstructionOperand>(InstructionOperand::Boolean(!negated))));                    
 
                     if (const auto instruction = builtins.selectInstruction(InstructionType(kind), modeFlags, operandRoots)) {
-                        irNodes.addNew(IrNode::Code(instruction, std::move(operandRoots)), location);
+                        irNodes.addNew(IrNode::Code(instruction, std::move(operandRoots), currentScope), location);
                         return true;
                     } else {
                         // If that fails, try to branch-on-opposite around a return.
@@ -6410,7 +6425,7 @@ namespace wiz {
             }
 
             if (const auto instruction = builtins.selectInstruction(InstructionType(kind), modeFlags, operandRoots)) {
-                irNodes.addNew(IrNode::Code(instruction, std::move(operandRoots)), location);
+                irNodes.addNew(IrNode::Code(instruction, std::move(operandRoots), currentScope), location);
                 return true;
             } else {
                 return false;
@@ -6455,9 +6470,11 @@ namespace wiz {
         auto& funcDefinition = definition->func;
 
         const auto oldFunction = currentFunction;
+        const auto oldDebugStackFrame = debugStackFrame;
         const auto oldReturnLabel = returnLabel;
         const auto onExit = makeScopeGuard([&]() {
             currentFunction = oldFunction;
+            debugStackFrame = oldDebugStackFrame;
             returnLabel = oldReturnLabel;
         });        
 
@@ -6472,6 +6489,7 @@ namespace wiz {
 
         if (!funcDefinition.inlined) {
             irNodes.addNew(IrNode::Label(currentFunction), location);
+            debugStackFrame = currentFunction;
         }
 
         funcDefinition.hasUnconditionalReturn = funcDefinition.hasUnconditionalReturn || hasUnconditionalReturn(funcDefinition.body);
@@ -6516,6 +6534,9 @@ namespace wiz {
             case StatementKind::Block: {
                 const auto& blockStatement = statement->block;
                 enterScope(getOrCreateStatementScope(StringView(), statement, currentScope));
+                if (currentFunction != nullptr) {
+                    currentScope->setDebugBlockId(++debugBlockId);
+                }
                 for (const auto& item : blockStatement.items) {
                     emitStatementIr(item.get());
                 }
@@ -6738,7 +6759,7 @@ namespace wiz {
                 irNodes.addNew(IrNode::Label(beginLabelDefinition), statement->location);
                 emitStatementIr(forStatement.body.get());
                 irNodes.addNew(IrNode::Label(continueLabelDefinition), reducedCondition->location);
-                irNodes.addNew(IrNode::Code(incrementInstruction, std::move(incrementOperandRoots)), reducedCondition->location);
+                irNodes.addNew(IrNode::Code(incrementInstruction, std::move(incrementOperandRoots), currentScope), reducedCondition->location);
                 if (!emitBranchIr(forStatement.distanceHint, BranchKind::Goto, beginLabelReferenceExpression, nullptr, conditionNegated, reducedCondition, reducedCondition->location)) {
                     report->error("could not generate branch instruction for " + statement->getDescription().toString(), statement->location);
                     break;
@@ -6755,7 +6776,25 @@ namespace wiz {
                     //report->error("TODO: `inline func`", statement->location);
                     break;
                 } else {
+                    auto funcStart = irNodes.size();
                     emitFunctionIr(definition, statement->location);
+                    auto funcEnd = irNodes.size() - 1;
+
+                    // Record, which IrNodes belong to this function as we need to know the end address for the .cdb export.
+                    while (funcStart < funcEnd && irNodes[funcStart]->kind != IrNodeKind::Code) {
+                        funcStart++;
+                    }
+                    while (funcEnd > funcStart && irNodes[funcEnd]->kind != IrNodeKind::Code) {
+                        funcEnd--;
+                    }
+                    if (funcStart <= funcEnd) {
+                        definition->func.lastCodeNode = irNodes[funcEnd].get();
+                        for (auto i = funcStart; i <= funcEnd; i++) {
+                            if (irNodes[i]->kind == IrNodeKind::Code) {
+                                irNodes[i]->code.function = definition;
+                            }
+                        }
+                    }
                 }
                 break;
             }
@@ -7146,6 +7185,23 @@ namespace wiz {
         }
 
         for (auto it = irNodeIndexesToRemove.rbegin(); it != irNodeIndexesToRemove.rend(); ++it) {
+            // Fix up functions, if the IrNode to be removed is their last code node.
+            if (irNodes[*it]->kind == IrNodeKind::Code && irNodes[*it]->code.function && irNodes[*it]->code.function->func.lastCodeNode == irNodes[*it].get()) {
+                auto i = *it;
+                auto function = irNodes[i]->code.function;
+                function->func.lastCodeNode = nullptr;
+                if (i-- > 0) {
+                    do {
+                        if (irNodes[i]->kind == IrNodeKind::Code) {
+                            if (irNodes[i]->code.function == function) {
+                                function->func.lastCodeNode = irNodes[i].get();
+                            }
+                            break;
+                        }
+                    } while (i--);
+                }
+            }
+
             irNodes.remove(*it);
         }
 
@@ -7245,6 +7301,7 @@ namespace wiz {
                     }
 
                     if (instruction->signature.extract(tempOperandRoots, captureLists)) {
+                        irNode->code.address = currentBank->getAddress();
                         tempBuffer.clear();
                         instruction->encoding->write(report, currentBank, tempBuffer, instruction->options, captureLists, irNode->location);
                         if (!currentBank->write(report, "code"_sv, irNode.get(), irNode->location, tempBuffer)) {

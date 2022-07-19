@@ -18,6 +18,7 @@ namespace wiz {
     struct Statement;
     struct Expression;
     struct TypeExpression;
+    struct IrNode;
 
     class Bank;
     class SymbolTable;
@@ -144,14 +145,16 @@ namespace wiz {
                 BranchKind returnKind,
                 const TypeExpression* returnTypeExpression,
                 SymbolTable* enclosingScope,
-                const Statement* body)
+                const Statement* body,
+                const Definition* stackFrame)
             : fallthrough(fallthrough),
             inlined(inlined),
             far(far),
             returnKind(returnKind),
             returnTypeExpression(returnTypeExpression),
             enclosingScope(enclosingScope),
-            body(body) {}
+            body(body),
+            stackFrame(stackFrame) {}
 
             bool fallthrough;
             bool inlined;
@@ -160,6 +163,7 @@ namespace wiz {
             const TypeExpression* returnTypeExpression;
             SymbolTable* enclosingScope;
             const Statement* body;
+            const Definition* stackFrame;
 
             SymbolTable* environment = nullptr;
             Optional<Address> address;
@@ -168,6 +172,7 @@ namespace wiz {
             std::vector<Definition*> parameters;
             std::vector<Definition*> locals;
             bool hasUnconditionalReturn = false;
+            const IrNode* lastCodeNode = nullptr;
         };
 
         struct Let {

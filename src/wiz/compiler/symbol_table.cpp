@@ -44,6 +44,22 @@ namespace wiz {
         }
     }
 
+    std::uint16_t SymbolTable::getDebugNestingLevel() const {
+        return debugNestingLevel;
+    }
+
+    void SymbolTable::setDebugNestingLevel(const std::uint16_t level) {
+        debugNestingLevel = level;
+    }
+
+    unsigned int SymbolTable::getDebugBlockId() const {
+        return debugBlockId;
+    }
+
+    void SymbolTable::setDebugBlockId(unsigned int id) {
+        debugBlockId = id;
+    }
+
     void SymbolTable::printKeys(Report* report) const {
         for (const auto& item : namesToDefinitions) {
             const auto& decl = item.second->declaration;

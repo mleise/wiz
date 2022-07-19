@@ -13,6 +13,7 @@ namespace wiz {
     class Report;
     class StringPool;
     class ResourceManager;
+    class Compiler;
     struct Definition;
     struct OutputFormatContext;
 
@@ -25,7 +26,7 @@ namespace wiz {
             StringView formatName,
             StringView outputName,
             const OutputFormatContext* outputContext,
-            std::vector<const Definition*> definitions)
+            const Compiler* compiler)
         : resourceManager(resourceManager),
         report(report),
         stringPool(stringPool),
@@ -33,7 +34,7 @@ namespace wiz {
         formatName(formatName),
         outputName(outputName),
         outputContext(outputContext),
-        definitions(definitions) {}
+        compiler(compiler) {}
 
         ResourceManager* resourceManager;
         Report* report;
@@ -42,7 +43,7 @@ namespace wiz {
         StringView formatName;
         StringView outputName;
         const OutputFormatContext* outputContext;
-        std::vector<const Definition*> definitions;
+        const Compiler* compiler;
 
         std::unordered_map<std::size_t, const Definition*> addressOwnership;
     };    

@@ -345,7 +345,7 @@ namespace wiz {
                 }
 
                 if (debugFormatName.getLength() != 0) {
-                    DebugFormatContext debugContext(resourceManager, report, &stringPool, &config, debugFormatName, outputName, &outputContext, compiler.getRegisteredDefinitions());
+                    DebugFormatContext debugContext(resourceManager, report, &stringPool, &config, debugFormatName, outputName, &outputContext, &compiler);
 
                     // FIXME: hardcoded.
                     const auto debugFormat = debugFormatCollection.find(debugFormatName);

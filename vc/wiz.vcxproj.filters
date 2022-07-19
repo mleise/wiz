@@ -258,6 +258,9 @@
     <ClInclude Include="..\src\wiz\format\debug\wla_sym_debug_format.h">
       <Filter>Header Files\format\debug</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\wiz\format\debug\cdb_sym_debug_format.h">
+      <Filter>Header Files\format\debug</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\wiz\parser\parser.cpp">
@@ -401,6 +404,9 @@
     <ClCompile Include="..\src\wiz\format\debug\wla_sym_debug_format.cpp">
       <Filter>Source Files\format\debug</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\wiz\format\debug\cdb_sym_debug_format.cpp">
+      <Filter>Source Files\format\debug</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Natvis Include="..\src\wiz\utility\int128.natvis">
@@ -438,6 +444,9 @@
     </Natvis>
     <Natvis Include="..\src\wiz\compiler\ir_node.natvis">
       <Filter>Header Files\compiler</Filter>
+    </Natvis>
+    <Natvis Include="..\src\wiz\format\debug\cdb_sym_debug_format.natvis">
+      <Filter>Header Files\format\debug</Filter>
     </Natvis>
   </ItemGroup>
 </Project>

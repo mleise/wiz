@@ -20,7 +20,7 @@ namespace slime {
     func update() {
         ai_wander.update();
 
-        let frame = t0;
+        var frame : u8 in t0;
         entity.anim_timer[x]++;
 
         frame = a = 0;

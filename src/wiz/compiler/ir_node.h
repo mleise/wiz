@@ -6,6 +6,7 @@
 #include <type_traits>
 
 #include <wiz/ast/expression.h>
+#include <wiz/compiler/address.h>
 #include <wiz/compiler/instruction.h>
 #include <wiz/utility/macros.h>
 #include <wiz/utility/optional.h>
@@ -48,12 +49,17 @@ namespace wiz {
         struct Code {
             Code(
                 const Instruction* instruction,
-                std::vector<InstructionOperandRoot> operandRoots)
+                std::vector<InstructionOperandRoot> operandRoots,
+                const SymbolTable* scope)
             : instruction(instruction),
-            operandRoots(std::move(operandRoots)) {}
+            operandRoots(std::move(operandRoots)),
+            scope(scope) {}
 
             const Instruction* instruction;
             std::vector<InstructionOperandRoot> operandRoots;
+            const SymbolTable* scope;
+            Definition* function;
+            Address address;
         };
 
         struct Var {
