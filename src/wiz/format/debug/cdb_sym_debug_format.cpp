@@ -314,8 +314,8 @@ namespace wiz {
                                 namesToDefinitions[(*it)->name] = *it;
                             }
 
-                            for (auto nameToDefinition : namesToDefinitions) {
-                                if (nameToDefinition.second->kind == DefinitionKind::Var) {
+                            for (const auto& nameToDefinition : namesToDefinitions) {
+                                if (nameToDefinition.second->kind == DefinitionKind::Var && (nameToDefinition.second->var.qualifiers & Qualifiers::Extern) == Qualifiers::None) {
                                     std::size_t linkerAddress, size;
                                     const Definition* registers;
                                     getLinkerAddressAndSize(nameToDefinition.second, linkerAddress, size, registers);
@@ -325,7 +325,7 @@ namespace wiz {
                                 }
                             }
 
-                            for (auto nameToDefinition : namesToDefinitions) {
+                            for (const auto& nameToDefinition : namesToDefinitions) {
                                 if (nameToDefinition.second->kind == DefinitionKind::Namespace) {
                                     const auto namespaceName = nameToDefinition.second->namespace_.environment->getFullName();
                                     if (nonEmptyNamespaces.find(namespaceName) != nonEmptyNamespaces.end()) {
