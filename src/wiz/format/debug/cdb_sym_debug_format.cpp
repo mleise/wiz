@@ -89,19 +89,6 @@ namespace wiz {
             return tmp;
         }
 
-        /// <summary>Retrieve the namespace string for a definition skipping anonymous blocks.</summary>
-        /// <param name="definition">Definition to return the namespace of.</param>
-        /// <returns>The fully qualified namespace for the given definition.</returns>
-        std::string getNamespace(const SymbolTable* scope) {
-            for (auto currentScope = scope; currentScope; currentScope = currentScope->getParent()) {
-                const auto fullName = currentScope->getFullName();
-                if (fullName.size() > 0 && fullName[0] != '%') {
-                    return fullName;
-                }
-            }
-            return "";
-        }
-
         struct Namespace {
             std::map<std::string, UniquePtr<Namespace>> namespaces;
             std::vector<const Definition*> memberVars;
@@ -219,7 +206,7 @@ namespace wiz {
                                     // Finally, intercept global variables in namespaceTree, because we'll put them in magic structs.
                                     if (!definition->var.enclosingFunction) {
                                         const auto namespaceName = getNamespace(definition->parentScope);
-                                        if (namespaceName.length() > 0) {
+                                        if (namespaceName.getLength() > 0) {
                                             const auto namespaceParts = text::split(StringView(namespaceName), "."_sv);
                                             auto currentNamespaces = &namespaceTree;
                                             Namespace* namespace_ = nullptr;
@@ -328,7 +315,7 @@ namespace wiz {
                             for (const auto& nameToDefinition : namesToDefinitions) {
                                 if (nameToDefinition.second->kind == DefinitionKind::Namespace) {
                                     const auto namespaceName = nameToDefinition.second->namespace_.environment->getFullName();
-                                    if (nonEmptyNamespaces.find(namespaceName) != nonEmptyNamespaces.end()) {
+                                    if (nonEmptyNamespaces.find(StringView(namespaceName)) != nonEmptyNamespaces.end()) {
                                         *this << "S:"_sv;
                                         writeLocalSymbol(nameToDefinition.second);
                                         *this << "({0}ST"_sv << NAMESPACE_ICON << namespaceName << ":S),Z,0,0"_sv;
@@ -379,7 +366,7 @@ namespace wiz {
                 std::string moduleName;                                             // File name without .wiz extension and with non-alphanumerics replaced.
                 std::unordered_map<StringView, StringView> relativeFilePaths;       // Cache of .wiz file names relative to this .cdb.
                 std::string cdbPath;                                                // Directory path of this .cdb that the above are based on.
-                std::string namespaceName;                                          // Current namespace including function names.
+                StringView namespaceName;                                           // Current namespace including function names.
                 const Definition* currentStackFrame = nullptr;                      // Current function we are inside of.
                 char* buffer = nullptr;                                             // Line buffer.
                 std::size_t bufferLen = 0;                                          // Size of line buffer.
@@ -387,11 +374,24 @@ namespace wiz {
                 bool useHex = false;                                                // Whether to encode the next integer as hex.
                 bool lineHasErrors = false;                                         // Some definition couldn't be represented and the buffer should not be written.
                 char convBuffer[20];                                                // Unsigned integer conversion buffer up to 64-bit.
-                std::unordered_map<const SymbolTable*, const Definition*> functionScopes;   // Reverse lookup from a scope to a function definition.
-                std::unordered_map<const SymbolTable*, std::pair<std::string, const Definition*>> scopeInfo;    // Cache for next higher function definition and namespace of a scope.
+                std::unordered_map<const SymbolTable*, const Definition*> functionScopes; // Reverse lookup from a scope to a function definition.
+                std::unordered_map<const SymbolTable*, std::pair<StringView, const Definition*>> scopeInfo; // Cache for next higher function definition and namespace of a scope.
                 std::vector<unsigned int> writtenBlockNestings;                     // Remembers which "N:<blockId>$<parentBlockId>" pairs have already been written.
                 std::map<std::string, UniquePtr<Namespace>> namespaceTree;          // List of namespaceTree found while going through definitions for use in namespace to struct conversion.
-                std::set<std::string> nonEmptyNamespaces;                           // For "namespaces as local variable" feature.
+                std::set<StringView> nonEmptyNamespaces;                            // For "namespaces as local variable" feature.
+
+                /// <summary>Retrieve the namespace string for a definition skipping anonymous blocks.</summary>
+                /// <param name="definition">Definition to return the namespace of.</param>
+                /// <returns>The fully qualified namespace for the given definition.</returns>
+                StringView getNamespace(const SymbolTable* scope) {
+                    for (auto currentScope = scope; currentScope; currentScope = currentScope->getParent()) {
+                        const auto fullName = currentScope->getFullName();
+                        if (fullName.size() > 0 && fullName[0] != '%') {
+                            return context.stringPool->intern(fullName);
+                        }
+                    }
+                    return ""_sv;
+                }
 
                 void reserveBuffer(std::size_t size) {
                     auto total = lineLen + size + text::OsNewLine.getLength();
@@ -413,6 +413,49 @@ namespace wiz {
                     lineLen += len;
                 }
 
+                CdbWriter& operator <<(const StringView sv) {
+                    appendToBuffer(sv.getData(), sv.getLength());
+                    return *this;
+                }
+
+                CdbWriter& operator <<(const std::string& text) {
+                    appendToBuffer(text.data(), text.length());
+                    return *this;
+                }
+
+                CdbWriter& operator <<(const char c) {
+                    reserveBuffer(1);
+                    buffer[lineLen++] = c;
+                    return *this;
+                }
+
+                template <typename T>
+                CdbWriter& operator <<(T v) {
+                    return *this << static_cast<std::size_t>(v);
+                }
+
+                CdbWriter& operator <<(std::size_t v) {
+                    if (!v) {
+                        *this << '0';
+                    } else {
+                        auto ptr = reinterpret_cast<char*>(&convBuffer + 1), end = ptr;
+                        if (!useHex) {
+                            do {
+                                *--ptr = v % 10 + '0';
+                                v /= 10;
+                            } while (v);
+                        } else {
+                            do {
+                                *--ptr = (v % 16 < 10) ? v % 16 + '0' : v % 16 + ('A' - 10);
+                                v /= 16;
+                            } while (v);
+                            useHex = false;
+                        }
+                        appendToBuffer(ptr, end - ptr);
+                    }
+                    return *this;
+                }
+
                 void commitBuffer(bool clear = true) {
                     if (!lineHasErrors) {
                         memcpy(&buffer[lineLen], text::OsNewLine.getData(), text::OsNewLine.getLength());
@@ -424,46 +467,8 @@ namespace wiz {
                     }
                 }
 
-                CdbWriter& operator <<(const StringView sv) {
-                    appendToBuffer(sv.getData(), sv.getLength());
-                    return *this;
-                }
-
-                CdbWriter& operator <<(const std::string& text) {
-                    appendToBuffer(text.data(), text.length());
-                    return *this;
-                }
-
-                CdbWriter& operator <<(const char& c) {
-                    appendToBuffer(&c, 1);
-                    return *this;
-                }
-
-                template <typename T>
-                CdbWriter& operator <<(T v) {
-                    return *this << static_cast<std::size_t>(v);
-                }
-
-                CdbWriter& operator <<(std::size_t v) {
-                    auto ptr = reinterpret_cast<char*>(&convBuffer + 1), end = ptr;
-                    if (!useHex) {
-                        do {
-                            *--ptr = v % 10 + '0';
-                            v /= 10;
-                        } while (v);
-                    } else {
-                        do {
-                            *--ptr = (v % 16 < 10) ? v % 16 + '0' : v % 16 + ('A' - 10);
-                            v /= 16;
-                        } while (v);
-                        useHex = false;
-                    }
-                    appendToBuffer(ptr, end - ptr);
-                    return *this;
-                }
-
                 void writeNamespacePrefix() {
-                    if (namespaceName.length() > 0) {
+                    if (namespaceName.getLength() > 0) {
                         *this << namespaceName << '.';
                     }
                 }
@@ -544,7 +549,7 @@ namespace wiz {
                                     break;
                                 }
                                 case DefinitionKind::Struct: {
-                                    const std::string oldNamespace = namespaceName;
+                                    const auto oldNamespace = namespaceName;
                                     const auto onExit = makeScopeGuard([&]() {
                                         namespaceName = oldNamespace;
                                     });
@@ -688,7 +693,7 @@ namespace wiz {
                         namespaceName = findings->second.first;
                         currentStackFrame = findings->second.second;
                     } else {
-                        namespaceName = "";
+                        namespaceName = ""_sv;
                         currentStackFrame = nullptr;
                         for (auto currentScope = scope; currentScope != nullptr; currentScope = currentScope->getParent()) {
                             // As an extension to the .cdb format, we write block nesting information so local variables show up in the right scopes.
@@ -713,10 +718,11 @@ namespace wiz {
                                     currentStackFrame = scopeAndFunction->second;
                                 }
                                 namespaceName = getNamespace(currentStackFrame->parentScope);
-                                if (namespaceName.length() > 0) {
-                                    namespaceName += '.';
+                                if (namespaceName.getLength() > 0) {
+                                    namespaceName = context.stringPool->intern(namespaceName.toString() + '.' + currentStackFrame->name.toString());
+                                } else {
+                                    namespaceName = currentStackFrame->name;
                                 }
-                                namespaceName += currentStackFrame->name.toString();
                             }
                         }
                         if (currentStackFrame == nullptr && scope != nullptr) {
@@ -845,13 +851,13 @@ namespace wiz {
 
         if (auto writer = context.resourceManager->openWriter(StringView(debugName))) {
             CdbWriter cdbWriter(context, writer.get(), StringView(debugName));
-            const auto definitions = context.compiler->getRegisteredDefinitions();
-            cdbWriter.dumpVersion();
-            cdbWriter.dumpAndSetModuleName(context.outputName);
-            cdbWriter.dumpDefinitions(definitions);
-            cdbWriter.dumpNamespaces();
-            cdbWriter.dumpLocalLabels(definitions);
-            cdbWriter.dumpSourceLines();
+                const auto definitions = context.compiler->getRegisteredDefinitions();
+                cdbWriter.dumpVersion();
+                cdbWriter.dumpAndSetModuleName(context.outputName);
+                cdbWriter.dumpDefinitions(definitions);
+                cdbWriter.dumpNamespaces();
+                cdbWriter.dumpLocalLabels(definitions);
+                cdbWriter.dumpSourceLines();
         }
 
         return true;
